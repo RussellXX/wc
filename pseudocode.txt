@@ -1,0 +1,293 @@
+procedure print_error(message: string, ...) -> void:
+    Print formatted message to stderr
+    Exit(1)
+end function
+white line
+procedure read_until_null_from_stdin() -> string:
+    line = malloc a space of MAX_LINE_LENGTH bytes
+    If line is NULL:
+    	Return NULL
+    end if
+    read from stdin to line char by char until EOF or '\0' or the size reach MAX_LINE_LENGTH
+    set the end of line as '\0'
+    If nothing has been read from stdin:
+    	free(line)
+    	Return NULL
+    end if
+    Return line
+end function
+white line
+procedure read_until_null_from_file(file_handle: FILE*) -> string:
+    line = malloc a space of MAX_LINE_LENGTH bytes
+    If line is NULL:
+    	Return NULL
+    end if
+    read from file_handle to line char by char until EOF or '\0' or the size reach MAX_LINE_LENGTH
+    set the end of line as '\0'
+    If nothing has been read from file_handle:
+    	free(line)
+    	Return null
+    end if
+    Return line
+end function
+white line
+procedure read_files_list(file: string) -> void:
+    If file == "-":
+        Loop forever:
+            file_name = read_until_null_from_stdin()
+            If file_name is NULL:
+                Break
+            end if
+        	If file_name is longer than 0:
+        		Add file_name to files_list
+        		files_count ++
+        	end if
+        	Else:
+        		free(file_name)
+        	end if
+        end loop
+    end if
+    Else:
+        Open file for reading as file_handle
+        If file_handle is NULL:
+            print_error("Error: Unable to open file %s.", file)
+        end if
+        Loop forever:
+            file_name = read_until_null_from_file(file_handle)
+            If file_name is NULL:
+                Break
+            end if
+            If file_name is longer than 0:
+            	Add file_name to files_list
+            	files_count ++
+           	end if
+           	Else:
+           		free(file_name)
+           	end if
+        end loop
+        Close file_handle
+    end if
+end function
+white line
+procedure parse_arguments(argc: int, argv: string[]) -> void:
+    Loop i from 1 to argc - 1:
+        If argv[i] == "-c" or argv[i] == "--bytes":
+            options_bytes = 1
+        end if
+        Else If argv[i] == "-m" or argv[i] == "--chars":
+            options_chars = 1
+        end if
+        Else If argv[i] == "-w" or argv[i] == "--words":
+            options_words = 1
+        end if
+        Else If argv[i] == "-l" or argv[i] == "--lines":
+            options_lines = 1
+        end if
+        Else If argv[i] == "-L" or argv[i] == "--max-line-length":
+            options_max_line_len = 1
+        end if
+        Else If argv[i] starts with "--total=":
+            options_total = argv[i] + 8
+        end if
+        Else If argv[i] starts with "--files0-from=":
+            file = argv[i] + 14
+            read_files_list(file)
+            read_from_file = true
+        end if
+        Else:
+            Add argv[i] to files_list
+            files_count ++
+        end if
+    end loop
+    If no options are given:
+    	options_lines = true
+    	options_words = true
+    	options_bytes = true
+    end if
+end function
+white line
+procedure clear_statistics() -> void:
+    set global_bytes_count, global_chars_count, global_words_count, global_lines_count, global_max_line_length to 0
+end function
+white line
+procedure is_whitespace(c: char) -> bool:
+    return (char == ' ' or char == '\t' or char == '\n' or char == '\r')
+end function
+white line
+procedure stat_file(file_handle: FILE*) -> void:
+    clear_statistics()  
+    setlocale(LC_CTYPE, "")
+    buffer = char[MAX_BUF_SIZE]
+    prev_space = true
+    prev_unprocessed_bytes = 0
+    While data can be read from file_handle into (buffer + prev):
+    	If reading fails:
+    		Report error and exit
+    	end if
+    	Update total bytes count
+    	total_bytes = bytes_read + prev_unprocessed_bytes
+    	char_iter = 0
+    	While char_iter < total_bytes:
+			byte = buffer[char_iter]
+            If byte is a single-byte ASCII character:
+                global_chars_count ++
+                If byte == '\n':
+                    global_lines_count ++
+                    If current_line_length > global_max_line_length:
+                        global_max_line_length = current_line_length
+                    end if
+                    current_line_length = 0
+                end if
+                If byte == '\t':
+                    current_line_length += 8 - (current_line_length % 8)
+                end if
+                Else if isprint(byte):
+                    current_line_length ++
+                end if
+                If prev_space and not is_whitespace(byte):
+                    global_words_count ++
+                end if
+                prev_space = is_whitespace(byte)
+            end if
+            Else if byte >= 0xC0 and byte <= 0xDF:
+                If total_bytes - char_iter < 2:
+                    Break
+                end if
+                global_chars_count ++
+                Use mbtowc to parse the next multi-byte character to wc
+                current_line_length += wcwidth(wc)
+                char_iter += 2
+                global_words_count += prev_space
+                prev_space = false
+            end if
+            Else if byte >= 0xE0 and byte <= 0xEF:
+                If total_bytes - char_iter < 3:
+                    Break
+                end if
+                Parse the next multi_byte character
+                Update global_chars_count
+                Update current_line_length
+                Update global_words_count
+                prev_space = false
+                char_iter += 3
+            end if
+            Else if byte >= 0xF0 and byte <= 0xF7:
+                If total_bytes - char_iter < 4:
+                    Break
+                end if
+                Parse the next multi_byte character
+                Update global_chars_count
+                Update current_line_length
+                Update global_words_count
+                prev_space = false
+                char_iter += 4
+            end if
+            Else:
+                print_error("Error: unexpected encoding error.")
+            end if
+		end loop
+        prev = total_bytes - char_iter
+        If prev > 0:
+            move the last prev bytes to the start of buffer
+        end if
+        If current_line_length > global_max_line_length:
+            global_max_line_length = current_line_length
+        end if
+    end loop
+    Add global_*_count to global_total_*
+    If global_max_line_length > global_total_max_line_length:
+    	global_total_max_line_length = global_max_line_length
+    end if
+end function
+white line
+procedure print_statistics(lines: int, words: int, chars: int, bytes: int, max_line_length: int, filename: string) -> void:
+    output_string <- ""
+    first_field <- true
+    buffer <- char[128]
+    If options_lines is set:
+        output_string += lines
+        first_field = false
+    end if
+    If options_words is set:
+        If first_field is true:
+            output_string += words
+            first_field = false
+        end if
+        Else:
+            output_string += " " + words
+        end if
+    end if
+    If options_chars is set:
+        If first_field is true:
+            output_string += chars
+            first_field = false
+        end if
+        Else:
+            output_string += " " + chars
+        end if
+    end if
+    If options_bytes is set:
+        If first_field is true:
+            output_string += bytes
+            first_field = false
+        end if
+        Else:
+            output_string += " " + bytes
+        end if
+    end if
+    If options_max_line_len is set:
+        If first_field is true:
+            output_string += max_line_length
+            first_field = false
+        end if
+        Else:
+            output_string += " " + max_line_length
+        end if
+    end if
+    If filename is not NULL:
+    	output_string += " " + filename
+    end if
+    Print output_string + '\n'
+end function
+white line
+procedure main(argc: int, argv: list of string) -> int:
+    Call parse_arguments(argc, argv)
+    If files_count == 0:
+		If not read_from_file:    
+            declare variable file_handle as FILE pointer
+            set file_handle = stdin
+            Call stat_file(file_handle)
+            Call print_statistics(global_lines_count, global_words_count, global_chars_count, global_bytes_count, global_max_line_length, NULL)
+    	end if
+        Return 0
+    end if
+    declare variable i as int = 0
+    While i < files_count:
+        declare variable filename as char pointer
+        set filename = files_list[i]
+        declare variable file_handle as FILE pointer
+        set file_handle = fopen(filename, "r")
+        If file_handle == NULL then
+            Call PrintError("Error: Unable to open file %s.\n", filename)
+            i = i + 1
+            Continue
+        end if
+        set global_file_name = filename
+        Call stat_file(file_handle)
+        Call fclose(file_handle)
+        If options_total != "only":
+            Call print_statistics(global_lines_count, global_words_count, global_chars_count, global_bytes_count, global_max_line_length, global_file_name)
+        end if
+        i = i + 1
+    end loop
+    If options_total == "only":
+        Call print_statistics(global_total_lines, global_total_words, global_total_chars, global_total_bytes, global_total_max_line_length, NULL)
+    end if
+	Else if options_total == "auto" and files_count > 1:
+        Call print_statistics(global_total_lines, global_total_words, global_total_chars, global_total_bytes, global_total_max_line_length, "total")
+	end if
+    Else if options_total == "always":
+        Call print_statistics(global_total_lines, global_total_words, global_total_chars, global_total_bytes, global_total_max_line_length, "total")
+    end if
+    Return 0
+end function
