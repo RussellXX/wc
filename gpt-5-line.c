@@ -200,6 +200,7 @@ void stat_file(FILE *file_handle) {
     clear_statistics();
     setlocale(LC_CTYPE, "");
     char buffer[MAX_BUF_SIZE];
+    bool prev_space = true;
     size_t prev_unprocessed_bytes = 0;
     while (1) {
         int bytes_read = fread(buffer + prev_unprocessed_bytes, 1, MAX_BUF_SIZE - prev_unprocessed_bytes, file_handle);
